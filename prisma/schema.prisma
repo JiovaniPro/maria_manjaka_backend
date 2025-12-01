@@ -1,0 +1,163 @@
+// Prisma Schema pour Gestion Maria Manjaka
+// Base de données: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ====================================
+// ENUMS
+// ====================================
+
+enum TypeTransaction {
+  RECETTE
+  DEPENSE
+}
+
+enum TypeCompte {
+  CAISSE
+  BANQUE
+}
+
+enum Statut {
+  ACTIF
+  INACTIF
+}
+
+enum TypeTransactionBancaire {
+  RETRAIT
+  DEPOT
+}
+
+// ====================================
+// MODELS
+// ====================================
+
+model User {
+  id            Int           @id @default(autoincrement())
+  email         String        @unique @db.VarChar(255)
+  motDePasse    String        @map("mot_de_passe") @db.VarChar(255)
+  nom           String        @db.VarChar(100)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  transactions  Transaction[]
+  auditLogs     AuditLog[]
+  
+  @@map("user")
+  @@index([email])
+}
+
+model Categorie {
+  id              Int               @id @default(autoincrement())
+  nom             String            @db.VarChar(100)
+  codeBudgetaire  String            @unique @map("code_budgetaire") @db.VarChar(20)
+  type            TypeTransaction
+  statut          Statut            @default(ACTIF)
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  transactions    Transaction[]
+  
+  @@map("categorie")
+  @@index([codeBudgetaire])
+  @@index([type, statut])
+}
+
+model Compte {
+  id                    Int                     @id @default(autoincrement())
+  nom                   String                  @unique @db.VarChar(50)
+  type                  TypeCompte
+  soldeActuel           Decimal                 @default(0) @map("solde_actuel") @db.Decimal(15, 2)
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+  
+  // Relations
+  transactions          Transaction[]
+  transactionsBancaires TransactionBancaire[]
+  
+  @@map("compte")
+  @@index([type])
+}
+
+model Transaction {
+  id                Int               @id @default(autoincrement())
+  categorieId       Int               @map("categorie_id")
+  compteId          Int               @map("compte_id")
+  dateTransaction   DateTime          @map("date_transaction") @db.Date
+  description       String            @db.Text
+  montant           Decimal           @db.Decimal(15, 2)
+  type              TypeTransaction
+  createdBy         Int               @map("created_by")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  categorie         Categorie         @relation(fields: [categorieId], references: [id], onDelete: Restrict)
+  compte            Compte            @relation(fields: [compteId], references: [id], onDelete: Restrict)
+  user              User              @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  
+  @@map("transaction")
+  @@index([categorieId])
+  @@index([compteId])
+  @@index([createdBy])
+  @@index([dateTransaction])
+  @@index([type])
+}
+
+model TransactionBancaire {
+  id              Int                       @id @default(autoincrement())
+  compteId        Int                       @map("compte_id")
+  dateOperation   DateTime                  @map("date_operation") @db.Date
+  description     String                    @db.Text
+  montant         Decimal                   @db.Decimal(15, 2)
+  type            TypeTransactionBancaire
+  numeroCheque    String?                   @map("numero_cheque") @db.VarChar(50)
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  
+  // Relations
+  compte          Compte                    @relation(fields: [compteId], references: [id], onDelete: Restrict)
+  
+  @@map("transaction_bancaire")
+  @@index([compteId])
+  @@index([dateOperation])
+  @@index([type])
+}
+
+model Parametre {
+  id            Int      @id @default(autoincrement())
+  cle           String   @unique @db.VarChar(50)
+  valeur        String   @db.Text
+  description   String?  @db.Text
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  @@map("parametre")
+  @@index([cle])
+}
+
+model AuditLog {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @map("user_id")
+  action      String    @db.VarChar(50)
+  tableName   String    @map("table_name") @db.VarChar(50)
+  recordId    Int       @map("record_id")
+  oldValue    Json?     @map("old_value")
+  newValue    Json?     @map("new_value")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("audit_log")
+  @@index([userId])
+  @@index([tableName, recordId])
+  @@index([createdAt])
+}

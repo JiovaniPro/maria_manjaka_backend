@@ -1,0 +1,45 @@
+const express = require('express');
+const router = express.Router();
+const {
+    getAllCategories,
+    getCategoryById,
+    createCategory,
+    updateCategory,
+    deleteCategory
+} = require('../controllers/categorieController');
+const { authMiddleware } = require('../middleware/auth');
+const { auditMiddleware } = require('../middleware/auditLog');
+
+router.use(authMiddleware);
+router.use(auditMiddleware());
+
+/**
+ * @swagger
+ * /categories:
+ *   get:
+ *     summary: Obtenir toutes les catégories
+ *     tags: [Categories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [RECETTE, DEPENSE]
+ *       - in: query
+ *         name: statut
+ *         schema:
+ *           type: string
+ *           enum: [ACTIF, INACTIF]
+ *     responses:
+ *       200:
+ *         description: Liste des catégories
+ */
+router.get('/', getAllCategories);
+router.get('/:id', getCategoryById);
+router.post('/', createCategory);
+router.put('/:id', updateCategory);
+router.delete('/:id', deleteCategory);
+
+module.exports = router;
