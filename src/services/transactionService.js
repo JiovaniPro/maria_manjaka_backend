@@ -127,7 +127,7 @@ const updateTransactionWithBalance = async (id, updateData, userId) => {
             logger.info(`Transaction updated: ID ${id} - Nouveau solde: ${nouveauSolde}`);
         }
 
-        logger.info(`Transaction updated: ID ${id} - Nouveau solde: ${nouveauSolde}`);
+
 
         return updatedTransaction;
     });
