@@ -96,6 +96,33 @@ const updateCategory = async (req, res, next) => {
         const { id } = req.params;
         const { nom, codeBudgetaire, type, statut } = req.body;
 
+        // Vérifier que la catégorie existe
+        const existingCategory = await prisma.categorie.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!existingCategory) {
+            return notFoundResponse(res, 'Catégorie');
+        }
+
+        // Si le code budgétaire est modifié, vérifier qu'il n'existe pas déjà (sauf pour cette catégorie)
+        if (codeBudgetaire && codeBudgetaire !== existingCategory.codeBudgetaire) {
+            const duplicate = await prisma.categorie.findFirst({
+                where: {
+                    codeBudgetaire: codeBudgetaire,
+                    id: { not: parseInt(id) }
+                }
+            });
+
+            if (duplicate) {
+                return errorResponse(
+                    res,
+                    `Le code budgétaire "${codeBudgetaire}" est déjà utilisé par une autre catégorie`,
+                    409
+                );
+            }
+        }
+
         const updateData = {};
         if (nom) updateData.nom = nom;
         if (codeBudgetaire) updateData.codeBudgetaire = codeBudgetaire;
@@ -111,6 +138,14 @@ const updateCategory = async (req, res, next) => {
 
         return successResponse(res, category, 'Catégorie mise à jour avec succès');
     } catch (error) {
+        // Gérer les erreurs Prisma (comme les contraintes d'unicité)
+        if (error.code === 'P2002') {
+            return errorResponse(
+                res,
+                'Ce code budgétaire est déjà utilisé par une autre catégorie',
+                409
+            );
+        }
         next(error);
     }
 };
