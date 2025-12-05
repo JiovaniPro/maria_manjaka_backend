@@ -108,8 +108,112 @@ const logout = async (req, res, next) => {
     }
 };
 
+/**
+ * @desc    Changer le mot de passe de connexion
+ * @route   PUT /api/auth/change-password
+ * @access  Private
+ */
+const changePassword = async (req, res, next) => {
+    try {
+        const { ancienMotDePasse, nouveauMotDePasse } = req.body;
+
+        // Validation
+        if (!ancienMotDePasse || !nouveauMotDePasse) {
+            return validationErrorResponse(res, [
+                { field: 'ancienMotDePasse', message: 'L\'ancien mot de passe est requis' },
+                { field: 'nouveauMotDePasse', message: 'Le nouveau mot de passe est requis' }
+            ]);
+        }
+
+        if (nouveauMotDePasse.length < 6) {
+            return errorResponse(res, 'Le nouveau mot de passe doit contenir au moins 6 caractères', 400);
+        }
+
+        // Récupérer l'utilisateur
+        const user = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        if (!user) {
+            return errorResponse(res, 'Utilisateur non trouvé', 404);
+        }
+
+        // Vérifier l'ancien mot de passe
+        const isOldPasswordValid = await bcrypt.compare(ancienMotDePasse, user.motDePasse);
+
+        if (!isOldPasswordValid) {
+            return errorResponse(res, 'Ancien mot de passe incorrect', 400);
+        }
+
+        // Hasher le nouveau mot de passe
+        const hashedNewPassword = await bcrypt.hash(nouveauMotDePasse, 10);
+
+        // Mettre à jour le mot de passe
+        await prisma.user.update({
+            where: { id: req.user.id },
+            data: { motDePasse: hashedNewPassword }
+        });
+
+        logger.info(`Password changed for user: ${user.email}`);
+
+        return successResponse(res, null, 'Mot de passe changé avec succès');
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @desc    Changer le mot de passe admin (pour voir les soldes et modifier les transactions)
+ * @route   PUT /api/auth/change-admin-password
+ * @access  Private
+ */
+const changeAdminPassword = async (req, res, next) => {
+    try {
+        const { ancienMotDePasse, nouveauMotDePasse } = req.body;
+
+        // Validation
+        if (!ancienMotDePasse || !nouveauMotDePasse) {
+            return validationErrorResponse(res, [
+                { field: 'ancienMotDePasse', message: 'L\'ancien mot de passe est requis' },
+                { field: 'nouveauMotDePasse', message: 'Le nouveau mot de passe est requis' }
+            ]);
+        }
+
+        // Récupérer le mot de passe admin actuel depuis les paramètres
+        const parametreAdminPassword = await prisma.parametre.findUnique({
+            where: { cle: 'ADMIN_PASSWORD' }
+        });
+
+        const currentAdminPassword = parametreAdminPassword ? parametreAdminPassword.valeur : '1234';
+
+        // Vérifier l'ancien mot de passe
+        if (ancienMotDePasse !== currentAdminPassword) {
+            return errorResponse(res, 'Ancien mot de passe admin incorrect', 400);
+        }
+
+        // Mettre à jour ou créer le paramètre
+        await prisma.parametre.upsert({
+            where: { cle: 'ADMIN_PASSWORD' },
+            update: { valeur: nouveauMotDePasse },
+            create: {
+                cle: 'ADMIN_PASSWORD',
+                valeur: nouveauMotDePasse,
+                description: 'Mot de passe pour voir les soldes en banque et modifier les transactions'
+            }
+        });
+
+        logger.info(`Admin password changed by user: ${req.user.email}`);
+
+        return successResponse(res, null, 'Mot de passe admin changé avec succès');
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     login,
     getMe,
-    logout
+    logout,
+    changePassword,
+    changeAdminPassword
 };
