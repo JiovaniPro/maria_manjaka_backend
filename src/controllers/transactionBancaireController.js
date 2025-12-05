@@ -9,11 +9,12 @@ const logger = require('../utils/logger');
  */
 const getAllTransactionsBancaires = async (req, res, next) => {
     try {
-        const { compteId, type, dateDebut, dateFin } = req.query;
+        const { compteId, type, dateDebut, dateFin, numeroCheque } = req.query;
 
         const where = {};
         if (compteId) where.compteId = parseInt(compteId);
         if (type) where.type = type;
+        if (numeroCheque) where.numeroCheque = numeroCheque;
 
         if (dateDebut || dateFin) {
             where.dateOperation = {};
