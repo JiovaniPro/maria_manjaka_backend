@@ -14,11 +14,12 @@ const {
  */
 const getAllTransactions = async (req, res, next) => {
     try {
-        const { categorieId, compteId, type, dateDebut, dateFin, limit = 50 } = req.query;
+        const { categorieId, sousCategorieId, compteId, type, dateDebut, dateFin, limit = 50 } = req.query;
 
         // Construire les filtres
         const where = {};
         if (categorieId) where.categorieId = parseInt(categorieId);
+        if (sousCategorieId) where.sousCategorieId = parseInt(sousCategorieId);
         if (compteId) where.compteId = parseInt(compteId);
         if (type) where.type = type;
 
@@ -32,6 +33,7 @@ const getAllTransactions = async (req, res, next) => {
             where,
             include: {
                 categorie: true,
+                sousCategorie: true,
                 compte: true,
                 user: {
                     select: { nom: true, email: true }
@@ -63,6 +65,7 @@ const getTransactionById = async (req, res, next) => {
             where: { id: parseInt(id) },
             include: {
                 categorie: true,
+                sousCategorie: true,
                 compte: true,
                 user: {
                     select: { nom: true, email: true }
@@ -87,11 +90,11 @@ const getTransactionById = async (req, res, next) => {
  */
 const createTransaction = async (req, res, next) => {
     try {
-        const { categorieId, compteId, dateTransaction, description, montant, type } = req.body;
+        const { categorieId, sousCategorieId, compteId, dateTransaction, description, montant, type } = req.body;
 
         // Validation
-        if (!categorieId || !compteId || !dateTransaction || !montant || !type) {
-            return errorResponse(res, 'Tous les champs obligatoires doivent être remplis', 400);
+        if (!categorieId || !sousCategorieId || !compteId || !dateTransaction || !montant || !type) {
+            return errorResponse(res, 'Tous les champs obligatoires doivent être remplis (catégorie, sous-catégorie, compte, date, montant, type)', 400);
         }
 
         // Vérifier que le montant est positif
@@ -99,9 +102,10 @@ const createTransaction = async (req, res, next) => {
             return errorResponse(res, 'Le montant doit être positif', 400);
         }
 
-        // Vérifier que la catégorie et le compte existent
-        const [categorie, compte] = await Promise.all([
+        // Vérifier que la catégorie, sous-catégorie et le compte existent
+        const [categorie, sousCategorie, compte] = await Promise.all([
             prisma.categorie.findUnique({ where: { id: parseInt(categorieId) } }),
+            prisma.sousCategorie.findUnique({ where: { id: parseInt(sousCategorieId) } }),
             prisma.compte.findUnique({ where: { id: parseInt(compteId) } })
         ]);
 
@@ -109,8 +113,21 @@ const createTransaction = async (req, res, next) => {
             return notFoundResponse(res, 'Catégorie');
         }
 
+        if (!sousCategorie) {
+            return notFoundResponse(res, 'Sous-catégorie');
+        }
+
         if (!compte) {
             return notFoundResponse(res, 'Compte');
+        }
+
+        // Vérifier que la sous-catégorie appartient à la catégorie
+        if (sousCategorie.categorieId !== parseInt(categorieId)) {
+            return errorResponse(
+                res,
+                'La sous-catégorie sélectionnée n\'appartient pas à la catégorie sélectionnée',
+                400
+            );
         }
 
         // Vérifier que le type de transaction correspond au type de catégorie
@@ -125,9 +142,10 @@ const createTransaction = async (req, res, next) => {
         // Créer la transaction avec mise à jour du solde
         const transaction = await createTransactionWithBalance({
             categorieId: parseInt(categorieId),
+            sousCategorieId: parseInt(sousCategorieId),
             compteId: parseInt(compteId),
             dateTransaction: new Date(dateTransaction),
-            description: description || '',
+            description: description || null,
             montant: parseFloat(montant),
             type
         }, req.user.id);
@@ -146,14 +164,47 @@ const createTransaction = async (req, res, next) => {
 const updateTransaction = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { categorieId, compteId, dateTransaction, description, montant, type } = req.body;
+        const { categorieId, sousCategorieId, compteId, dateTransaction, description, montant, type } = req.body;
+
+        // Récupérer la transaction existante pour vérifier les valeurs par défaut
+        const existingTransaction = await prisma.transaction.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!existingTransaction) {
+            return notFoundResponse(res, 'Transaction');
+        }
 
         // Construire les données de mise à jour
         const updateData = {};
+        const finalCategorieId = categorieId ? parseInt(categorieId) : existingTransaction.categorieId;
+        const finalSousCategorieId = sousCategorieId ? parseInt(sousCategorieId) : existingTransaction.sousCategorieId;
+
+        // La sous-catégorie est obligatoire
+        if (!finalSousCategorieId) {
+            return errorResponse(res, 'La sous-catégorie est obligatoire', 400);
+        }
+
         if (categorieId) updateData.categorieId = parseInt(categorieId);
+        
+        // Vérifier que la sous-catégorie existe et appartient à la catégorie
+        const sousCategorie = await prisma.sousCategorie.findUnique({
+            where: { id: finalSousCategorieId }
+        });
+        if (!sousCategorie) {
+            return notFoundResponse(res, 'Sous-catégorie');
+        }
+        if (sousCategorie.categorieId !== finalCategorieId) {
+            return errorResponse(
+                res,
+                'La sous-catégorie sélectionnée n\'appartient pas à la catégorie sélectionnée',
+                400
+            );
+        }
+        updateData.sousCategorieId = finalSousCategorieId;
         if (compteId) updateData.compteId = parseInt(compteId);
         if (dateTransaction) updateData.dateTransaction = new Date(dateTransaction);
-        if (description !== undefined) updateData.description = description;
+        if (description !== undefined) updateData.description = description || null;
         if (montant) {
             if (parseFloat(montant) <= 0) {
                 return errorResponse(res, 'Le montant doit être positif', 400);

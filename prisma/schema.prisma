@@ -65,10 +65,28 @@ model Categorie {
   
   // Relations
   transactions    Transaction[]
+  sousCategories  SousCategorie[]
   
   @@map("categorie")
   @@index([codeBudgetaire])
   @@index([type, statut])
+}
+
+model SousCategorie {
+  id              Int               @id @default(autoincrement())
+  nom             String            @db.VarChar(100)
+  categorieId     Int               @map("categorie_id")
+  statut          Statut            @default(ACTIF)
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  categorie        Categorie         @relation(fields: [categorieId], references: [id], onDelete: Cascade)
+  transactions     Transaction[]
+  
+  @@map("sous_categorie")
+  @@index([categorieId])
+  @@index([statut])
 }
 
 model Compte {
@@ -90,9 +108,10 @@ model Compte {
 model Transaction {
   id                Int               @id @default(autoincrement())
   categorieId       Int               @map("categorie_id")
+  sousCategorieId   Int               @map("sous_categorie_id")
   compteId          Int               @map("compte_id")
   dateTransaction   DateTime          @map("date_transaction") @db.Date
-  description       String            @db.Text
+  description       String?           @db.Text
   montant           Decimal           @db.Decimal(15, 2)
   type              TypeTransaction
   createdBy         Int               @map("created_by")
@@ -101,11 +120,13 @@ model Transaction {
   
   // Relations
   categorie         Categorie         @relation(fields: [categorieId], references: [id], onDelete: Restrict)
+  sousCategorie     SousCategorie     @relation(fields: [sousCategorieId], references: [id], onDelete: Restrict)
   compte            Compte            @relation(fields: [compteId], references: [id], onDelete: Restrict)
   user              User              @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   
   @@map("transaction")
   @@index([categorieId])
+  @@index([sousCategorieId])
   @@index([compteId])
   @@index([createdBy])
   @@index([dateTransaction])

@@ -20,6 +20,7 @@ const createTransactionWithBalance = async (transactionData, userId) => {
             },
             include: {
                 categorie: true,
+                sousCategorie: true,
                 compte: true,
                 user: {
                     select: { nom: true, email: true }
