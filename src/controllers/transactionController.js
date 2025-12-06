@@ -37,7 +37,10 @@ const getAllTransactions = async (req, res, next) => {
                     select: { nom: true, email: true }
                 }
             },
-            orderBy: { dateTransaction: 'desc' },
+            orderBy: [
+                { dateTransaction: 'desc' },
+                { id: 'desc' } // En cas d'égalité de date, trier par ID décroissant (plus récent en premier)
+            ],
             take: parseInt(limit)
         });
 

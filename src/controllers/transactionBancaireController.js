@@ -27,7 +27,10 @@ const getAllTransactionsBancaires = async (req, res, next) => {
             include: {
                 compte: true
             },
-            orderBy: { dateOperation: 'desc' }
+            orderBy: [
+                { dateOperation: 'desc' },
+                { id: 'desc' } // En cas d'égalité de date, trier par ID décroissant (plus récent en premier)
+            ]
         });
 
         return successResponse(res, transactions, 'Transactions bancaires récupérées avec succès');
