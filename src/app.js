@@ -28,23 +28,19 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting global
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limite à 100 requêtes par fenêtre
-    message: 'Trop de requêtes depuis cette IP, veuillez réessayer plus tard.',
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-app.use('/api/', limiter);
+// Rate limiting optimisé
+const {
+    globalLimiter,
+    authLimiter,
+    mutationLimiter,
+    heavyRequestLimiter,
+} = require('./middleware/rateLimiter');
 
-// Rate limiting pour l'authentification (plus strict)
-const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 5, // 5 tentatives de connexion par 15 minutes
-    message: 'Trop de tentatives de connexion, veuillez réessayer plus tard.',
-    skipSuccessfulRequests: true
-});
+// Rate limiting global (plus permissif)
+app.use('/api/', globalLimiter);
+
+// Rate limiting pour l'authentification (strict)
+// (appliqué dans authRoutes)
 
 // Logger les requêtes
 app.use((req, res, next) => {
@@ -117,7 +113,13 @@ const transactionBancaireRoutes = require('./routes/transactionBancaireRoutes');
 const parametreRoutes = require('./routes/parametreRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 
+// Appliquer les rate limiters spécifiques
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/transactions/stats', heavyRequestLimiter);
+app.use('/api/transactions', mutationLimiter);
+app.use('/api/transactions-bancaires', mutationLimiter);
+app.use('/api/categories', mutationLimiter);
+app.use('/api/comptes', mutationLimiter);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categorieRoutes);
 app.use('/api/comptes', compteRoutes);

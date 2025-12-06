@@ -9,6 +9,8 @@ const {
 } = require('../controllers/categorieController');
 const { authMiddleware } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/auditLog');
+const { cacheMiddleware } = require('../middleware/cache');
+const { createCacheInvalidation } = require('../middleware/cacheInvalidation');
 
 router.use(authMiddleware);
 router.use(auditMiddleware());
@@ -36,10 +38,17 @@ router.use(auditMiddleware());
  *       200:
  *         description: Liste des catégories
  */
-router.get('/', getAllCategories);
-router.get('/:id', getCategoryById);
-router.post('/', createCategory);
-router.put('/:id', updateCategory);
-router.delete('/:id', deleteCategory);
+// Cache pour les routes GET (10 minutes - données statiques)
+router.get('/', cacheMiddleware(10 * 60 * 1000), getAllCategories);
+router.get('/:id', cacheMiddleware(10 * 60 * 1000), getCategoryById);
+router.post('/', createCacheInvalidation('GET_/api/categories'), createCategory);
+router.put('/:id', createCacheInvalidation(
+    'GET_/api/categories',
+    'GET_/api/categories/:id'
+), updateCategory);
+router.delete('/:id', createCacheInvalidation(
+    'GET_/api/categories',
+    'GET_/api/categories/:id'
+), deleteCategory);
 
 module.exports = router;
