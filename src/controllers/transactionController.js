@@ -131,10 +131,23 @@ const createTransaction = async (req, res, next) => {
         }
 
         // Vérifier que le type de transaction correspond au type de catégorie
-        if (categorie.type !== type) {
+        // Exception : Fikambanana peut être utilisée pour les deux types (RECETTE et DEPENSE)
+        // MAIS on doit s'assurer que la sous-catégorie appartient bien à une catégorie Fikambanana du bon type
+        const isFikambanana = categorie.nom.toLowerCase().includes('fikambanana');
+        if (!isFikambanana && categorie.type !== type) {
             return errorResponse(
                 res,
                 `Le type de transaction (${type}) ne correspond pas au type de catégorie (${categorie.type})`,
+                400
+            );
+        }
+        
+        // Pour Fikambanana, vérifier que la catégorie sélectionnée a bien le bon type
+        // (car il peut y avoir deux catégories Fikambanana distinctes : une pour RECETTE, une pour DEPENSE)
+        if (isFikambanana && categorie.type !== type) {
+            return errorResponse(
+                res,
+                `Le type de catégorie (${categorie.type}) ne correspond pas au type de transaction (${type}). Veuillez sélectionner la catégorie Fikambanana appropriée.`,
                 400
             );
         }
@@ -201,6 +214,38 @@ const updateTransaction = async (req, res, next) => {
                 400
             );
         }
+        
+        // Vérifier le type de catégorie si la catégorie ou le type a changé
+        const finalType = type || existingTransaction.type;
+        if (categorieId || type) {
+            const categorie = await prisma.categorie.findUnique({
+                where: { id: finalCategorieId }
+            });
+            if (!categorie) {
+                return notFoundResponse(res, 'Catégorie');
+            }
+            
+            // Vérifier que le type de transaction correspond au type de catégorie
+            // Exception : Fikambanana peut être utilisée pour les deux types, mais on doit vérifier que la catégorie a le bon type
+            const isFikambanana = categorie.nom.toLowerCase().includes('fikambanana');
+            if (!isFikambanana && categorie.type !== finalType) {
+                return errorResponse(
+                    res,
+                    `Le type de transaction (${finalType}) ne correspond pas au type de catégorie (${categorie.type})`,
+                    400
+                );
+            }
+            
+            // Pour Fikambanana, vérifier que la catégorie sélectionnée a bien le bon type
+            if (isFikambanana && categorie.type !== finalType) {
+                return errorResponse(
+                    res,
+                    `Le type de catégorie (${categorie.type}) ne correspond pas au type de transaction (${finalType}). Veuillez sélectionner la catégorie Fikambanana appropriée.`,
+                    400
+                );
+            }
+        }
+        
         updateData.sousCategorieId = finalSousCategorieId;
         if (compteId) updateData.compteId = parseInt(compteId);
         if (dateTransaction) updateData.dateTransaction = new Date(dateTransaction);
