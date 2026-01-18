@@ -15,6 +15,8 @@ const getAllUsers = async (req, res, next) => {
                 id: true,
                 email: true,
                 nom: true,
+                role: true,
+                compteSecretaireId: true,
                 createdAt: true,
                 updatedAt: true
             },
@@ -42,6 +44,8 @@ const getUserById = async (req, res, next) => {
                 id: true,
                 email: true,
                 nom: true,
+                role: true,
+                compteSecretaireId: true,
                 createdAt: true,
                 updatedAt: true
             }

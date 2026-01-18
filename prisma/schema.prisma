@@ -22,6 +22,12 @@ enum TypeTransaction {
 enum TypeCompte {
   CAISSE
   BANQUE
+  SECRETAIRE
+}
+
+enum RoleUser {
+  ADMIN
+  SECRETAIRE
 }
 
 enum Statut {
@@ -43,15 +49,19 @@ model User {
   email         String        @unique @db.VarChar(255)
   motDePasse    String        @map("mot_de_passe") @db.VarChar(255)
   nom           String        @db.VarChar(100)
+  role          RoleUser      @default(ADMIN)
+  compteSecretaireId Int?     @map("compte_secretaire_id")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
   
   // Relations
   transactions  Transaction[]
   auditLogs     AuditLog[]
+  compteSecretaire Compte?    @relation("CompteSecretaire", fields: [compteSecretaireId], references: [id], onDelete: SetNull)
   
   @@map("user")
   @@index([email])
+  @@index([role])
 }
 
 model Categorie {
@@ -100,6 +110,7 @@ model Compte {
   // Relations
   transactions          Transaction[]
   transactionsBancaires TransactionBancaire[]
+  usersSecretaires      User[]                  @relation("CompteSecretaire")
   
   @@map("compte")
   @@index([type])

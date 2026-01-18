@@ -113,6 +113,7 @@ const transactionRoutes = require('./routes/transactionRoutes');
 const transactionBancaireRoutes = require('./routes/transactionBancaireRoutes');
 const parametreRoutes = require('./routes/parametreRoutes');
 const auditRoutes = require('./routes/auditRoutes');
+const compteSecretaireRoutes = require('./routes/compteSecretaireRoutes');
 
 // Appliquer les rate limiters spécifiques
 app.use('/api/auth', authLimiter, authRoutes);
@@ -130,6 +131,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/transactions-bancaires', transactionBancaireRoutes);
 app.use('/api/parametres', parametreRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/comptes-secretaires', compteSecretaireRoutes);
 
 // ====================================
 // GESTION DES ERREURS

@@ -42,13 +42,14 @@ const login = async (req, res, next) => {
             {
                 id: user.id,
                 email: user.email,
-                nom: user.nom
+                nom: user.nom,
+                role: user.role || 'ADMIN'
             },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRE || '7d' }
         );
 
-        logger.info(`User logged in: ${user.email}`);
+        logger.info(`User logged in: ${user.email} (Role: ${user.role || 'ADMIN'})`);
 
         // Retourner le token et les infos utilisateur (sans le mot de passe)
         return successResponse(res, {
@@ -57,6 +58,8 @@ const login = async (req, res, next) => {
                 id: user.id,
                 email: user.email,
                 nom: user.nom,
+                role: user.role || 'ADMIN',
+                compteSecretaireId: user.compteSecretaireId,
                 createdAt: user.createdAt
             }
         }, 'Connexion réussie');
@@ -79,6 +82,8 @@ const getMe = async (req, res, next) => {
                 id: true,
                 email: true,
                 nom: true,
+                role: true,
+                compteSecretaireId: true,
                 createdAt: true,
                 updatedAt: true
             }

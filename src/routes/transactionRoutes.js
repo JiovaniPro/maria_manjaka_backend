@@ -6,7 +6,8 @@ const {
     createTransaction,
     updateTransaction,
     deleteTransaction,
-    getTransactionStats
+    getTransactionStats,
+    getRecapitulation
 } = require('../controllers/transactionController');
 const { authMiddleware } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/auditLog');
@@ -19,6 +20,10 @@ router.use(auditMiddleware());
 // Stats doit être avant /:id pour éviter de matcher "stats" comme un ID
 // Cache court pour les stats (1 minute - données dynamiques)
 router.get('/stats', cacheMiddleware(1 * 60 * 1000), getTransactionStats);
+
+// Récapitulation doit être avant /:id pour éviter de matcher "recapitulation" comme un ID
+// Cache court pour la récapitulation (1 minute - données dynamiques)
+router.get('/recapitulation', cacheMiddleware(1 * 60 * 1000), getRecapitulation);
 
 // Cache court pour les transactions (1 minute - données dynamiques)
 router.get('/', cacheMiddleware(1 * 60 * 1000), getAllTransactions);

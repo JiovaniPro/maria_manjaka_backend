@@ -16,11 +16,24 @@ const getAllTransactions = async (req, res, next) => {
     try {
         const { categorieId, sousCategorieId, compteId, type, dateDebut, dateFin, limit = 50 } = req.query;
 
+        // Vérifier le rôle de l'utilisateur
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
         // Construire les filtres
         const where = {};
+        
+        // Si l'utilisateur est secrétaire, filtrer automatiquement par son compte secrétaire
+        if (currentUser.role === 'SECRETAIRE' && currentUser.compteSecretaireId) {
+            where.compteId = currentUser.compteSecretaireId;
+        } else if (compteId) {
+            // Pour les admins, utiliser le compteId fourni en paramètre
+            where.compteId = parseInt(compteId);
+        }
+        
         if (categorieId) where.categorieId = parseInt(categorieId);
         if (sousCategorieId) where.sousCategorieId = parseInt(sousCategorieId);
-        if (compteId) where.compteId = parseInt(compteId);
         if (type) where.type = type;
 
         if (dateDebut || dateFin) {
@@ -92,6 +105,23 @@ const createTransaction = async (req, res, next) => {
     try {
         const { categorieId, sousCategorieId, compteId, dateTransaction, description, montant, type } = req.body;
 
+        // Vérifier le rôle de l'utilisateur
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        // Si l'utilisateur est secrétaire, il ne peut faire que des dépenses
+        if (currentUser.role === 'SECRETAIRE' && type !== 'DEPENSE') {
+            return errorResponse(res, 'Les secrétaires ne peuvent créer que des dépenses', 403);
+        }
+
+        // Si l'utilisateur est secrétaire, vérifier qu'il utilise son propre compte
+        if (currentUser.role === 'SECRETAIRE') {
+            if (currentUser.compteSecretaireId !== parseInt(compteId)) {
+                return errorResponse(res, 'Vous devez utiliser votre compte secrétaire', 403);
+            }
+        }
+
         // Validation
         if (!categorieId || !sousCategorieId || !compteId || !dateTransaction || !montant || !type) {
             return errorResponse(res, 'Tous les champs obligatoires doivent être remplis (catégorie, sous-catégorie, compte, date, montant, type)', 400);
@@ -131,10 +161,12 @@ const createTransaction = async (req, res, next) => {
         }
 
         // Vérifier que le type de transaction correspond au type de catégorie
-        // Exception : Fikambanana peut être utilisée pour les deux types (RECETTE et DEPENSE)
-        // MAIS on doit s'assurer que la sous-catégorie appartient bien à une catégorie Fikambanana du bon type
-        const isFikambanana = categorie.nom.toLowerCase().includes('fikambanana');
-        if (!isFikambanana && categorie.type !== type) {
+        // Exception : Fikambanana masina peut être utilisée pour les deux types (RECETTE et DEPENSE)
+        // Une seule catégorie Fikambanana masina peut accepter les deux types de transactions
+        const isFikambananaMasina = categorie.nom.toLowerCase().includes('fikambanana') && 
+                                     categorie.nom.toLowerCase().includes('masina');
+        
+        if (!isFikambananaMasina && categorie.type !== type) {
             return errorResponse(
                 res,
                 `Le type de transaction (${type}) ne correspond pas au type de catégorie (${categorie.type})`,
@@ -142,15 +174,8 @@ const createTransaction = async (req, res, next) => {
             );
         }
         
-        // Pour Fikambanana, vérifier que la catégorie sélectionnée a bien le bon type
-        // (car il peut y avoir deux catégories Fikambanana distinctes : une pour RECETTE, une pour DEPENSE)
-        if (isFikambanana && categorie.type !== type) {
-            return errorResponse(
-                res,
-                `Le type de catégorie (${categorie.type}) ne correspond pas au type de transaction (${type}). Veuillez sélectionner la catégorie Fikambanana appropriée.`,
-                400
-            );
-        }
+        // Pour Fikambanana masina, on accepte les deux types (RECETTE et DEPENSE) sans vérification
+        // Les autres catégories Fikambanana (sans "masina") suivent la règle normale
 
         // Créer la transaction avec mise à jour du solde
         const transaction = await createTransactionWithBalance({
@@ -181,11 +206,28 @@ const updateTransaction = async (req, res, next) => {
 
         // Récupérer la transaction existante pour vérifier les valeurs par défaut
         const existingTransaction = await prisma.transaction.findUnique({
-            where: { id: parseInt(id) }
+            where: { id: parseInt(id) },
+            include: { compte: true }
         });
 
         if (!existingTransaction) {
             return notFoundResponse(res, 'Transaction');
+        }
+
+        // Vérifier le rôle de l'utilisateur
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        // Si l'utilisateur est secrétaire, vérifier qu'il ne modifie que ses propres transactions
+        if (currentUser.role === 'SECRETAIRE' && currentUser.compteSecretaireId) {
+            if (existingTransaction.compteId !== currentUser.compteSecretaireId) {
+                return errorResponse(res, 'Vous ne pouvez modifier que vos propres transactions', 403);
+            }
+            // Forcer le compteId à rester celui du secrétaire
+            if (compteId && parseInt(compteId) !== currentUser.compteSecretaireId) {
+                return errorResponse(res, 'Vous ne pouvez utiliser que votre compte secrétaire', 403);
+            }
         }
 
         // Construire les données de mise à jour
@@ -226,9 +268,12 @@ const updateTransaction = async (req, res, next) => {
             }
             
             // Vérifier que le type de transaction correspond au type de catégorie
-            // Exception : Fikambanana peut être utilisée pour les deux types, mais on doit vérifier que la catégorie a le bon type
-            const isFikambanana = categorie.nom.toLowerCase().includes('fikambanana');
-            if (!isFikambanana && categorie.type !== finalType) {
+            // Exception : Fikambanana masina peut être utilisée pour les deux types (RECETTE et DEPENSE)
+            // Une seule catégorie Fikambanana masina peut accepter les deux types de transactions
+            const isFikambananaMasina = categorie.nom.toLowerCase().includes('fikambanana') && 
+                                         categorie.nom.toLowerCase().includes('masina');
+            
+            if (!isFikambananaMasina && categorie.type !== finalType) {
                 return errorResponse(
                     res,
                     `Le type de transaction (${finalType}) ne correspond pas au type de catégorie (${categorie.type})`,
@@ -236,18 +281,17 @@ const updateTransaction = async (req, res, next) => {
                 );
             }
             
-            // Pour Fikambanana, vérifier que la catégorie sélectionnée a bien le bon type
-            if (isFikambanana && categorie.type !== finalType) {
-                return errorResponse(
-                    res,
-                    `Le type de catégorie (${categorie.type}) ne correspond pas au type de transaction (${finalType}). Veuillez sélectionner la catégorie Fikambanana appropriée.`,
-                    400
-                );
-            }
+            // Pour Fikambanana masina, on accepte les deux types (RECETTE et DEPENSE) sans vérification
+            // Les autres catégories Fikambanana (sans "masina") suivent la règle normale
         }
         
         updateData.sousCategorieId = finalSousCategorieId;
-        if (compteId) updateData.compteId = parseInt(compteId);
+        // Si secrétaire, forcer le compteId à son compte secrétaire
+        if (currentUser.role === 'SECRETAIRE' && currentUser.compteSecretaireId) {
+            updateData.compteId = currentUser.compteSecretaireId;
+        } else if (compteId) {
+            updateData.compteId = parseInt(compteId);
+        }
         if (dateTransaction) updateData.dateTransaction = new Date(dateTransaction);
         if (description !== undefined) updateData.description = description || null;
         if (montant) {
@@ -279,6 +323,27 @@ const deleteTransaction = async (req, res, next) => {
     try {
         const { id } = req.params;
 
+        // Récupérer la transaction existante pour vérifier les permissions
+        const existingTransaction = await prisma.transaction.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!existingTransaction) {
+            return notFoundResponse(res, 'Transaction');
+        }
+
+        // Vérifier le rôle de l'utilisateur
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        // Si l'utilisateur est secrétaire, vérifier qu'il ne supprime que ses propres transactions
+        if (currentUser.role === 'SECRETAIRE' && currentUser.compteSecretaireId) {
+            if (existingTransaction.compteId !== currentUser.compteSecretaireId) {
+                return errorResponse(res, 'Vous ne pouvez supprimer que vos propres transactions', 403);
+            }
+        }
+
         // Supprimer avec restauration du solde
         await deleteTransactionWithBalance(id);
 
@@ -300,7 +365,18 @@ const getTransactionStats = async (req, res, next) => {
     try {
         const { dateDebut, dateFin } = req.query;
 
+        // Vérifier le rôle de l'utilisateur
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
         const where = {};
+        
+        // Si l'utilisateur est secrétaire, filtrer automatiquement par son compte secrétaire
+        if (currentUser.role === 'SECRETAIRE' && currentUser.compteSecretaireId) {
+            where.compteId = currentUser.compteSecretaireId;
+        }
+        
         if (dateDebut || dateFin) {
             where.dateTransaction = {};
             if (dateDebut) where.dateTransaction.gte = new Date(dateDebut);
@@ -334,11 +410,148 @@ const getTransactionStats = async (req, res, next) => {
     }
 };
 
+/**
+ * @desc    Obtenir la récapitulation des transactions groupées par catégorie et sous-catégorie
+ * @route   GET /api/transactions/recapitulation
+ * @access  Private
+ */
+const getRecapitulation = async (req, res, next) => {
+    try {
+        const { dateDebut, dateFin } = req.query;
+
+        if (!dateDebut || !dateFin) {
+            return errorResponse(res, 'Les dates de début et de fin sont requises', 400);
+        }
+
+        // Vérifier le rôle de l'utilisateur
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        const where = {
+            dateTransaction: {
+                gte: new Date(dateDebut),
+                lte: new Date(dateFin)
+            }
+        };
+        
+        // Si l'utilisateur est secrétaire, filtrer automatiquement par son compte secrétaire
+        if (currentUser.role === 'SECRETAIRE' && currentUser.compteSecretaireId) {
+            where.compteId = currentUser.compteSecretaireId;
+        } else if (currentUser.role === 'ADMIN') {
+            // Pour les admins, exclure les transactions des comptes secrétaires
+            // car elles sont des RECETTES pour le secrétaire mais ne doivent pas apparaître dans la récap admin
+            // On doit récupérer d'abord les IDs des comptes non-secrétaires
+            const comptesAdmin = await prisma.compte.findMany({
+                where: {
+                    type: {
+                        not: 'SECRETAIRE'
+                    }
+                },
+                select: { id: true }
+            });
+            const compteIdsAdmin = comptesAdmin.map(c => c.id);
+            where.compteId = {
+                in: compteIdsAdmin
+            };
+        }
+
+        // Récupérer toutes les transactions dans la période
+        const transactions = await prisma.transaction.findMany({
+            where,
+            include: {
+                categorie: true,
+                sousCategorie: true,
+                compte: true
+            },
+            orderBy: [
+                { categorie: { nom: 'asc' } },
+                { sousCategorie: { nom: 'asc' } },
+                { dateTransaction: 'asc' }
+            ]
+        });
+
+        // Grouper par catégorie puis par sous-catégorie
+        const grouped = {};
+        
+        transactions.forEach(transaction => {
+            const categorieId = transaction.categorieId;
+            const categorieNom = transaction.categorie.nom;
+            const sousCategorieId = transaction.sousCategorieId;
+            const sousCategorieNom = transaction.sousCategorie.nom;
+            const type = transaction.type;
+            const montant = parseFloat(transaction.montant);
+
+            // Initialiser la catégorie si elle n'existe pas
+            if (!grouped[categorieId]) {
+                grouped[categorieId] = {
+                    id: categorieId,
+                    nom: categorieNom,
+                    type: transaction.categorie.type,
+                    sousCategories: {},
+                    totalRecettes: 0,
+                    totalDepenses: 0
+                };
+            }
+
+            // Initialiser la sous-catégorie si elle n'existe pas
+            if (!grouped[categorieId].sousCategories[sousCategorieId]) {
+                grouped[categorieId].sousCategories[sousCategorieId] = {
+                    id: sousCategorieId,
+                    nom: sousCategorieNom,
+                    transactions: [],
+                    totalRecettes: 0,
+                    totalDepenses: 0
+                };
+            }
+
+            // Ajouter la transaction
+            grouped[categorieId].sousCategories[sousCategorieId].transactions.push({
+                id: transaction.id,
+                dateTransaction: transaction.dateTransaction,
+                description: transaction.description,
+                montant: montant,
+                type: type,
+                compte: transaction.compte.nom
+            });
+
+            // Mettre à jour les totaux
+            if (type === 'RECETTE') {
+                grouped[categorieId].sousCategories[sousCategorieId].totalRecettes += montant;
+                grouped[categorieId].totalRecettes += montant;
+            } else {
+                grouped[categorieId].sousCategories[sousCategorieId].totalDepenses += montant;
+                grouped[categorieId].totalDepenses += montant;
+            }
+        });
+
+        // Convertir en tableau et calculer les totaux généraux
+        const result = {
+            dateDebut: dateDebut,
+            dateFin: dateFin,
+            categories: Object.values(grouped).map(categorie => ({
+                ...categorie,
+                sousCategories: Object.values(categorie.sousCategories),
+                soldeNet: categorie.totalRecettes - categorie.totalDepenses
+            })),
+            totalGeneralRecettes: Object.values(grouped).reduce((sum, cat) => sum + cat.totalRecettes, 0),
+            totalGeneralDepenses: Object.values(grouped).reduce((sum, cat) => sum + cat.totalDepenses, 0)
+        };
+
+        result.soldeNetGeneral = result.totalGeneralRecettes - result.totalGeneralDepenses;
+
+        return successResponse(res, result, 'Récapitulation récupérée avec succès');
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getAllTransactions,
     getTransactionById,
     createTransaction,
     updateTransaction,
     deleteTransaction,
-    getTransactionStats
+    getTransactionStats,
+    getRecapitulation
 };
